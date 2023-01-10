@@ -62,7 +62,12 @@ func main() {
 		log.Fatal(err)
 		return
 	}
-	defer model.Close()
+	defer func(model whisper.Model) {
+		err := model.Close()
+		if err != nil {
+			log.Fatal(err)
+		}
+	}(model)
 
 	rootHandler := RootHandler{Model: model}
 	r.Post("/transcribe", rootHandler.transcribe)
