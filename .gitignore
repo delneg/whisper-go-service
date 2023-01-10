@@ -76,3 +76,7 @@ Temporary Items
 .apdisk
 
 models/*.bin
+.env
+samples/*.wav
+samples/*.webm
+build/

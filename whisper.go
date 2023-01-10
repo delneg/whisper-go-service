@@ -3,11 +3,12 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/ggerganov/whisper.cpp/bindings/go/pkg/whisper"
 	"io"
 	"log"
+	"mime/multipart"
 	"net/http"
 	"os"
-	"os/exec"
 	"strconv"
 
 	"github.com/google/uuid"
@@ -15,12 +16,16 @@ import (
 )
 
 const (
-	whisperBin       = "whisper.cpp/main"
-	whisperModelPath = "whisper.cpp/models/ggml-"
-	samplesDir       = "whisper.cpp/samples"
+	// whisperBin       = "whisper.cpp/main"
+	// whisperModelPath = "whisper.cpp/models/ggml-"
+	samplesDir = "samples"
 )
 
-func getSubsFile(w http.ResponseWriter, r *http.Request) {
+type RootHandler struct {
+	Model whisper.Model
+}
+
+func (h RootHandler) getSubsFile(w http.ResponseWriter, r *http.Request) {
 	path, err := os.Getwd()
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
@@ -35,7 +40,6 @@ func getSubsFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	fmt.Println(id)
 	w.Header().Set("Content-Disposition", "attachment; filename="+strconv.Quote("subtitles.srt"))
 	w.Header().Set("Content-Type", "application/octet-stream")
 	http.ServeFile(w, r, fmt.Sprintf("%v/%v/%v.wav.srt", path, samplesDir, id))
@@ -61,10 +65,13 @@ func returnServerError(w http.ResponseWriter, r *http.Request, message string) {
 	}
 
 	//w.WriteHeader(http.StatusInternalServerError)
-	w.Write(jsonData)
+	_, err = w.Write(jsonData)
+	if err != nil {
+		log.Printf("Error writing jsonData: %v", err)
+	}
 }
 
-func transcribe(w http.ResponseWriter, r *http.Request) {
+func (h RootHandler) transcribe(w http.ResponseWriter, r *http.Request) {
 	path, err := os.Getwd()
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
@@ -83,8 +90,12 @@ func transcribe(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		w.WriteHeader(http.StatusOK)
-		w.Write(jsonData)
+		_, err = w.Write(jsonData)
+		if err != nil {
+			log.Printf("Error writing jsonData: %v", err)
+		}
 		return
+
 	case "POST":
 		log.Printf("Got POST for transcribing...")
 		var response Response
@@ -100,7 +111,12 @@ func transcribe(w http.ResponseWriter, r *http.Request) {
 			returnServerError(w, r, fmt.Sprintf("Error getting the form file: %v", err))
 			return
 		}
-		defer file.Close()
+		defer func(file multipart.File) {
+			err := file.Close()
+			if err != nil {
+				log.Printf("Error closing the file %v - %v", header.Filename, err)
+			}
+		}(file)
 
 		language := r.FormValue("lang")
 		if language == "" {
@@ -109,8 +125,8 @@ func transcribe(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// get params
-		translate, _ := strconv.ParseBool(r.FormValue("translate"))
-		getSubs, _ := strconv.ParseBool(r.FormValue("subs"))
+		//translate, _ := strconv.ParseBool(r.FormValue("translate"))
+		//getSubs, _ := strconv.ParseBool(r.FormValue("subs"))
 		speedUp, _ := strconv.ParseBool(r.FormValue("speedUp"))
 
 		id := uuid.New()
@@ -120,8 +136,16 @@ func transcribe(w http.ResponseWriter, r *http.Request) {
 			returnServerError(w, r, fmt.Sprintf("Error getting the form file: %v", err))
 			return
 		}
-		defer f.Close()
-		io.Copy(f, file)
+		defer func(f *os.File) {
+			err := f.Close()
+			if err != nil {
+				log.Printf("Error closing the file %v - %v", f.Name(), err)
+			}
+		}(f)
+
+		if _, err := io.Copy(f, file); err != nil {
+			log.Printf("Error copying the file %v", err)
+		}
 
 		/*** FFMPEG ****/
 
@@ -136,7 +160,7 @@ func transcribe(w http.ResponseWriter, r *http.Request) {
 			OverWriteOutput().ErrorToStdOut().Run()
 
 		if err != nil {
-			log.Printf("%v", err)
+			log.Printf("ffmpeg Err: %v", err)
 			w.WriteHeader(http.StatusInternalServerError)
 			returnServerError(w, r, fmt.Sprintf("Error while encoding to wav: %v", err))
 			return
@@ -145,57 +169,66 @@ func transcribe(w http.ResponseWriter, r *http.Request) {
 		// Remove old file
 		err = os.Remove(fmt.Sprintf("%v/%v/%v.webm", path, samplesDir, id.String()))
 		if err != nil {
-			log.Printf("Could not remove file.")
+			log.Printf("Could not remove file %v", id.String())
 		}
 
 		/*** WHISPER ****/
-		// Prepare whisper main args
-		commandString := fmt.Sprintf("%v/%v", path, whisperBin)
 		targetFilepath := fmt.Sprintf("%v/%v/%v.wav", path, samplesDir, id.String())
-		model := fmt.Sprintf("%v/%v%v.bin", path, whisperModelPath, WhisperModel)
-
-		// Populate whisper args
-		whisperArgs := make([]string, 0)
-		whisperArgs = append(whisperArgs, "-m", model, "-nt", "-l", language)
-		if getSubs {
-			whisperArgs = append(whisperArgs, "-osrt")
-		}
-		if speedUp { // Speed Up
-			whisperArgs = append(whisperArgs, "--speed-up")
-		}
-		if translate {
-			whisperArgs = append(whisperArgs, "--translate")
-		}
-		fmt.Println(WhisperThreads, WhisperProcs)
-		if WhisperThreads != "4" {
-			whisperArgs = append(whisperArgs, "-t", WhisperThreads)
-		}
-		if WhisperProcs != "1" {
-			whisperArgs = append(whisperArgs, "-p", WhisperProcs)
-		}
-
-		whisperArgs = append(whisperArgs, "-f", targetFilepath)
-
-		// Run whisper
-		log.Printf("%v %v", commandString, whisperArgs)
-		command := exec.Command(commandString, whisperArgs...)
-		fmt.Printf(command.String())
-		output, err := exec.Command(commandString, whisperArgs...).Output()
+		err = WhisperProcess(h.Model, targetFilepath, language, speedUp, false)
 		if err != nil {
+			log.Printf("Whisper Error: %v", err)
 			w.WriteHeader(http.StatusInternalServerError)
-			returnServerError(w, r, fmt.Sprintf("Error while transcribing: %v", err))
+			returnServerError(w, r, fmt.Sprintf("Whisper Error: %v", err))
 			return
 		}
 
-		response.Result = string(output)
-		response.Id = id.String()
-
-		jsonData, err := json.Marshal(response)
-		if err != nil {
-			w.WriteHeader(http.StatusInternalServerError)
-			returnServerError(w, r, fmt.Sprintf("Error marshalling to json: %v", err))
-			return
-		}
+		//// Prepare whisper main args
+		//commandString := fmt.Sprintf("%v/%v", path, whisperBin)
+		//
+		//model := fmt.Sprintf("%v/%v%v.bin", path, whisperModelPath, WhisperModel)
+		//
+		//// Populate whisper args
+		//whisperArgs := make([]string, 0)
+		//whisperArgs = append(whisperArgs, "-m", model, "-nt", "-l", language)
+		//if getSubs {
+		//	whisperArgs = append(whisperArgs, "-osrt")
+		//}
+		//if speedUp { // Speed Up
+		//	whisperArgs = append(whisperArgs, "--speed-up")
+		//}
+		//if translate {
+		//	whisperArgs = append(whisperArgs, "--translate")
+		//}
+		//fmt.Println(WhisperThreads, WhisperProcs)
+		//if WhisperThreads != "4" {
+		//	whisperArgs = append(whisperArgs, "-t", WhisperThreads)
+		//}
+		//if WhisperProcs != "1" {
+		//	whisperArgs = append(whisperArgs, "-p", WhisperProcs)
+		//}
+		//
+		//whisperArgs = append(whisperArgs, "-f", targetFilepath)
+		//
+		//// Run whisper
+		//log.Printf("%v %v", commandString, whisperArgs)
+		//command := exec.Command(commandString, whisperArgs...)
+		//fmt.Printf(command.String())
+		//output, err := exec.Command(commandString, whisperArgs...).Output()
+		//if err != nil {
+		//	w.WriteHeader(http.StatusInternalServerError)
+		//	returnServerError(w, r, fmt.Sprintf("Error while transcribing: %v", err))
+		//	return
+		//}
+		//
+		//response.Result = string(output)
+		//response.Id = id.String()
+		//
+		jsonData, err := json.Marshal("")
+		//if err != nil {
+		//	w.WriteHeader(http.StatusInternalServerError)
+		//	returnServerError(w, r, fmt.Sprintf("Error marshalling to json: %v", err))
+		//	return
+		//}
 
 		if KeepFiles != "true" {
 			err = os.Remove(fmt.Sprintf("%v/%v/%v.wav", path, samplesDir, id.String()))

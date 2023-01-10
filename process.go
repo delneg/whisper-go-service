@@ -11,7 +11,7 @@ import (
 	wav "github.com/go-audio/wav"
 )
 
-func Process(model whisper.Model, path string, lang string, speedup, tokens bool) error {
+func WhisperProcess(model whisper.Model, path string, lang string, speedup, tokens bool) error {
 	var data []float32
 
 	// Create processing context

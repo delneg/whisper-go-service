@@ -18,32 +18,6 @@ var WhisperProcs string
 var KeepFiles string
 
 func setEnvVariables() {
-	WhisperThreads = os.Getenv("WHISPER_THREADS")
-	if WhisperThreads == "" {
-		log.Printf("No WHISPER_THREADS ENV found. Trying to get .env file.")
-		err := godotenv.Load()
-		if err != nil {
-			log.Printf("No .env file found... Defaulting WHISPER_THREADS to 0")
-			WhisperThreads = "4"
-		}
-		os.Getenv("WHISPER_THREADS")
-		if WhisperThreads == "" {
-			WhisperThreads = "4"
-		}
-	}
-	WhisperProcs = os.Getenv("WHISPER_PROCESSORS")
-	if WhisperProcs == "" {
-		log.Printf("No WHISPER_PROCESSORS ENV found. Trying to get .env file.")
-		err := godotenv.Load()
-		if err != nil {
-			log.Printf("No .env file found... Defaulting WHISPER_PROCESSORS to 0")
-			WhisperProcs = "1"
-		}
-		os.Getenv("WHISPER_PROCESSORS")
-		if WhisperProcs == "" {
-			WhisperProcs = "1"
-		}
-	}
 
 	WhisperModel = os.Getenv("WHISPER_MODEL")
 	if WhisperModel == "" {
@@ -55,7 +29,7 @@ func setEnvVariables() {
 		}
 		os.Getenv("WHISPER_MODEL")
 		if WhisperModel == "" {
-			WhisperModel = "small"
+			WhisperModel = "models/ggml-large.bin"
 		}
 	}
 	log.Printf("Selected model: %v", WhisperModel)
@@ -79,7 +53,7 @@ func main() {
 	// Get the environment variables
 	setEnvVariables()
 
-	// Setup the router and routes
+	// Set up the router and routes
 	r := chi.NewRouter()
 
 	r.Use(middleware.Logger)
@@ -92,8 +66,9 @@ func main() {
 	}
 	defer model.Close()
 
-	r.Post("/transcribe", transcribe)
-	r.Get("/getsubs", getSubsFile)
+	rootHandler := RootHandler{Model: model}
+	r.Post("/transcribe", rootHandler.transcribe)
+	r.Get("/getsubs", rootHandler.getSubsFile)
 
 	c := cors.New(cors.Options{
 		AllowedOrigins: []string{"*"},
