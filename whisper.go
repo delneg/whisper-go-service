@@ -119,10 +119,10 @@ func (h RootHandler) transcribe(w http.ResponseWriter, r *http.Request) {
 		}(file)
 
 		language := r.FormValue("lang")
-		if language == "" {
-			fmt.Println("Defaulting language to English...")
-			language = "en"
-		}
+		//if language == "" {
+		//	fmt.Println("Defaulting language to English...")
+		//	language = "en"
+		//}
 
 		// get params
 		//translate, _ := strconv.ParseBool(r.FormValue("translate"))
