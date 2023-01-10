@@ -3,7 +3,7 @@ module github.com/delneg/whisper-go-service
 go 1.19
 
 require (
-	github.com/ggerganov/whisper.cpp/bindings/go v0.0.0-20230107073439-f82a7dd019f5
+	github.com/ggerganov/whisper.cpp/bindings/go v0.0.0-20230108182103-4ef3398e8fe0
 	github.com/go-audio/wav v1.1.0
 	github.com/go-chi/chi/v5 v5.0.7
 	github.com/google/uuid v1.3.0

@@ -13,8 +13,6 @@ import (
 )
 
 var WhisperModel string
-var WhisperThreads string
-var WhisperProcs string
 var KeepFiles string
 
 func setEnvVariables() {
@@ -29,7 +27,7 @@ func setEnvVariables() {
 		}
 		os.Getenv("WHISPER_MODEL")
 		if WhisperModel == "" {
-			WhisperModel = "models/ggml-large.bin"
+			WhisperModel = "models/ggml-medium.bin"
 		}
 	}
 	log.Printf("Selected model: %v", WhisperModel)

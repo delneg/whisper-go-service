@@ -174,7 +174,7 @@ func (h RootHandler) transcribe(w http.ResponseWriter, r *http.Request) {
 
 		/*** WHISPER ****/
 		targetFilepath := fmt.Sprintf("%v/%v/%v.wav", path, samplesDir, id.String())
-		err = WhisperProcess(h.Model, targetFilepath, language, speedUp, false)
+		resultingText, err := WhisperProcess(h.Model, targetFilepath, language, speedUp, false)
 		if err != nil {
 			log.Printf("Whisper Error: %v", err)
 			w.WriteHeader(http.StatusInternalServerError)
@@ -220,15 +220,15 @@ func (h RootHandler) transcribe(w http.ResponseWriter, r *http.Request) {
 		//	return
 		//}
 		//
-		//response.Result = string(output)
-		//response.Id = id.String()
-		//
-		jsonData, err := json.Marshal("")
-		//if err != nil {
-		//	w.WriteHeader(http.StatusInternalServerError)
-		//	returnServerError(w, r, fmt.Sprintf("Error marshalling to json: %v", err))
-		//	return
-		//}
+		response.Result = string(resultingText)
+		response.Id = id.String()
+
+		jsonData, err := json.Marshal(response)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			returnServerError(w, r, fmt.Sprintf("Error marshalling to json: %v", err))
+			return
+		}
 
 		if KeepFiles != "true" {
 			err = os.Remove(fmt.Sprintf("%v/%v/%v.wav", path, samplesDir, id.String()))

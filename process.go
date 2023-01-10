@@ -3,7 +3,9 @@ package main
 import (
 	"fmt"
 	"io"
+	"log"
 	"os"
+	"strings"
 	"time"
 
 	// Package imports
@@ -11,30 +13,30 @@ import (
 	wav "github.com/go-audio/wav"
 )
 
-func WhisperProcess(model whisper.Model, path string, lang string, speedup, tokens bool) error {
+func WhisperProcess(model whisper.Model, path string, lang string, speedup, tokens bool) (string, error) {
 	var data []float32
 
 	// Create processing context
 	context, err := model.NewContext()
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	// Open the file
 	fh, err := os.Open(path)
 	if err != nil {
-		return err
+		return "", err
 	}
 	defer fh.Close()
 
 	// Decode the WAV file
 	dec := wav.NewDecoder(fh)
 	if buf, err := dec.FullPCMBuffer(); err != nil {
-		return err
+		return "", err
 	} else if dec.SampleRate != whisper.SampleRate {
-		return fmt.Errorf("unsupported sample rate: %d", dec.SampleRate)
+		return "", fmt.Errorf("unsupported sample rate: %d", dec.SampleRate)
 	} else if dec.NumChans != 1 {
-		return fmt.Errorf("unsupported number of channels: %d", dec.NumChans)
+		return "", fmt.Errorf("unsupported number of channels: %d", dec.NumChans)
 	} else {
 		data = buf.AsFloat32Buffer().Data
 	}
@@ -43,9 +45,10 @@ func WhisperProcess(model whisper.Model, path string, lang string, speedup, toke
 	var cb whisper.SegmentCallback
 	if lang != "" {
 		if err := context.SetLanguage(lang); err != nil {
-			return err
+			return "", err
 		}
 	}
+	context.SetTranslate(false)
 	if speedup {
 		context.SetSpeedup(true)
 	}
@@ -61,20 +64,25 @@ func WhisperProcess(model whisper.Model, path string, lang string, speedup, toke
 
 	// Process the data
 	if err := context.Process(data, cb); err != nil {
-		return err
+		return "", err
 	}
 
+	var resultString strings.Builder
 	// Print out the results
 	for {
 		segment, err := context.NextSegment()
 		if err == io.EOF {
 			break
 		} else if err != nil {
-			return err
+			return "", err
 		}
-		fmt.Printf("[%6s->%6s] %s\n", segment.Start.Truncate(time.Millisecond), segment.End.Truncate(time.Millisecond), segment.Text)
+		_, err = fmt.Fprintf(&resultString, "%s\n", segment.Text)
+		//_, err = fmt.Fprintf(&resultString, "[%6s->%6s] %s\n", segment.Start.Truncate(time.Millisecond), segment.End.Truncate(time.Millisecond), segment.Text)
+		if err != nil {
+			log.Printf("Error printing to stringBuilder - %v", err)
+		}
 	}
 
 	// Return success
-	return nil
+	return resultString.String(), nil
 }
