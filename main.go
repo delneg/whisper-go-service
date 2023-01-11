@@ -81,18 +81,6 @@ func main() {
 	r.Use(middleware.Logger)
 	r.Use(JSONMiddleware)
 
-	model, err := whisper.New(WhisperModel)
-	if err != nil {
-		log.Fatal(err)
-		return
-	}
-	defer func(model whisper.Model) {
-		err := model.Close()
-		if err != nil {
-			log.Fatal(err)
-		}
-	}(model)
-
 	b.Handle(tele.OnVoice, func(c tele.Context) error {
 		voice := c.Message().Voice
 		log.Printf("Received voice %v, on disk %v", voice.FileID, voice.OnDisk())
@@ -107,6 +95,18 @@ func main() {
 				log.Fatalf("Error removing temp file %v", err)
 			}
 		}(tempFile.Name())
+
+		model, err := whisper.New(WhisperModel)
+		if err != nil {
+			//log.Fatal(err)
+			return c.Send(fmt.Sprintf("Error while loading the model - %v", err))
+		}
+		defer func(model whisper.Model) {
+			err := model.Close()
+			if err != nil {
+				log.Fatal(err)
+			}
+		}(model)
 
 		err = b.Download(&voice.File, tempFile.Name())
 		if err != nil {
