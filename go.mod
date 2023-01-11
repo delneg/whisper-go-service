@@ -10,6 +10,7 @@ require (
 	github.com/joho/godotenv v1.4.0
 	github.com/rs/cors v1.8.2
 	github.com/u2takey/ffmpeg-go v0.4.1
+	gopkg.in/telebot.v3 v3.1.2
 )
 
 require (
