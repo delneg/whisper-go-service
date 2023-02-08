@@ -141,7 +141,7 @@ func main() {
 			return c.Send(fmt.Sprintf("Error while encoding to wav: %v", err))
 		}
 
-		resultingText, err := WhisperProcess(model, outputTempFile.Name(), "", false, false)
+		resultingText, err := WhisperProcess(model, outputTempFile.Name(), "auto", false, false)
 
 		if err != nil {
 			log.Printf("Whisper Error: %v", err)
